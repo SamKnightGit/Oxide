@@ -6,7 +6,7 @@ use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 mod commands;
-use commands::{list, show};
+use commands::{list, show, exit};
 
 const PROMPT: &str = ">> ";
 const DEBUG: bool = true;
@@ -17,6 +17,7 @@ lazy_static! {
         let mut command_hm = HashMap::new();
         command_hm.insert("ls".to_string(), list as fn(&Vec<String>, &mut PathBuf) -> ());
         command_hm.insert("cat".to_string(), show);
+        command_hm.insert("exit".to_string(), exit);
         //command_hm.insert("cd".to_string(), change_directory);
 
         command_hm

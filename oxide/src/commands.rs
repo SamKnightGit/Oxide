@@ -22,6 +22,7 @@ pub fn list(filepath: &Vec<String>, cwd: &mut PathBuf) {
 
 }
 
+
 fn _list(filepath: &Path) -> io::Result<()> {
     if filepath.is_dir() {
         for entry in read_dir(filepath)? {
@@ -76,4 +77,8 @@ fn _show(filepath: &Path) {
         Err(error) => { println!("Could not read file {} \n Error {}", filepath.display(), error); }
         Ok(file_text) => { println!("{}", file_text); }
     }
+}
+
+pub fn exit(filepath: &Vec<String>, cwd: &mut PathBuf){
+    std::process::exit(0)
 }
