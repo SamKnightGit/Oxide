@@ -29,8 +29,9 @@ fn main() {
 
     let mut cwd = PathBuf::from(".");
 
+
     loop {
-        print!("{}", PROMPT);
+        print!("{0} {1}", std::env::current_dir().unwrap().to_str().unwrap(), PROMPT);
         io::stdout().flush().unwrap();
         
         let mut input = String::new();

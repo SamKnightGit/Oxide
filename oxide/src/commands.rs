@@ -68,7 +68,7 @@ pub fn show (filepath: &Vec<String>, cwd: &mut PathBuf) {
 
 fn _show(filepath: &Path) {
     if !filepath.is_file() {
-        println!("Can not print out non-file contents.");
+        println!("Cannot print out non-file contents.");
         return;
     }
     println!("Showing file {}", filepath.display());
