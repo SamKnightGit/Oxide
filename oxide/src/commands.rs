@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use chrono::DateTime;
 use chrono::Local;
 
+#[cfg(target_family = "windows")]
 use crate::windows_clear;
 
 pub fn list(filepath: &Vec<String>, cwd: &mut PathBuf) {
@@ -62,7 +63,7 @@ fn _form_list_string(file: &DirEntry, filename: &str, file_path: &Path) -> Strin
 }
 
 fn _get_file_size(metadata: &Metadata) -> String {
-    // TODO: fix directories being zero
+    // TODO: fix directories being zero on Windows
     // TODO: decide on system for displaying sizes in what units
     let mut size: f64 = metadata.len() as f64;
     size /= 1e3;

@@ -6,7 +6,11 @@ use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 mod commands;
+
+
+#[cfg(target_family = "windows")]
 mod windows_clear;
+
 use commands::{list, show, exit, change_directory, clear, mkdir};
 
 
