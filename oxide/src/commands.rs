@@ -34,13 +34,16 @@ fn _list(filepath: &Path) -> io::Result<()> {
                     println!("Could not convert path to utf-8 string. What funky OS are you using?");
                 }
                 Some(filename) => {
-                    println!("{}", filename);
+                        println!("{}", filename);
                 }
             }
         }
     }
-    else {
+    else if filepath.is_file() {
         println!("Can't list a file! But the file name is: {}", filepath.display());
+    }
+    else{
+        println!("Not a valid directory: {}", filepath.display());
     }
     Ok(())
 }
