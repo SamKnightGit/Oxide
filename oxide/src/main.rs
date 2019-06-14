@@ -6,7 +6,9 @@ use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 mod commands;
+mod windows_clear;
 use commands::{list, show, exit, change_directory, clear};
+
 
 const PROMPT: &str = ">> ";
 const DEBUG: bool = false;

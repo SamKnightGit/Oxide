@@ -1,6 +1,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use std::fs::{read_dir, read_to_string};
+use std::io::Write;
+use crate::windows_clear;
 
 pub fn list(filepath: &Vec<String>, cwd: &mut PathBuf) {
     if filepath.len() == 0 {
@@ -114,7 +116,7 @@ fn _clear(){
 
 #[cfg(target_family = "windows")]
 fn _clear(){
-    std::process::Command::new("cls").status().unwrap();
+    windows_clear::clear_screen_windows();
 }
 
 pub fn exit(filepath: &Vec<String>, cwd: &mut PathBuf){
