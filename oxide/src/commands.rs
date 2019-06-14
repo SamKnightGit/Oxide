@@ -103,6 +103,20 @@ fn _show(filepath: &Path) {
     }
 }
 
+pub fn clear(filepath: &Vec<String>, cwd: &mut PathBuf){
+    _clear();
+}
+
+#[cfg(target_family = "unix")]
+fn _clear(){
+    std::process::Command::new("clear").status().unwrap();
+}
+
+#[cfg(target_family = "windows")]
+fn _clear(){
+    std::process::Command::new("cls").status().unwrap();
+}
+
 pub fn exit(filepath: &Vec<String>, cwd: &mut PathBuf){
     std::process::exit(0)
 }
