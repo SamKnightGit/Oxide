@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 mod commands;
 mod windows_clear;
-use commands::{list, show, exit, change_directory, clear};
+use commands::{list, show, exit, change_directory, clear, mkdir};
 
 
 const PROMPT: &str = ">> ";
@@ -21,6 +21,7 @@ lazy_static! {
         command_hm.insert("exit".to_string(), exit);
         command_hm.insert("cd".to_string(), change_directory);
         command_hm.insert("clear".to_string(), clear);
+        command_hm.insert("mkdir".to_string(), mkdir);
 
         command_hm
     };

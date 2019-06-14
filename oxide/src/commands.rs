@@ -122,6 +122,27 @@ fn _clear(){
     windows_clear::clear_screen_windows();
 }
 
+pub fn mkdir(filepath: &Vec<String>, cwd: &mut PathBuf){
+    let file_paths: Vec<&Path> = filepath.iter().map(Path::new).collect();
+
+    for path in file_paths {
+        _mkdir(path);
+    }
+}
+
+fn _mkdir(path: &Path) {
+    if path.exists(){
+        println!("{} already exists", path.display());
+        return;
+    }
+    let result = std::fs::create_dir_all(path);
+
+    if result.is_err(){
+        println!("Failed to create directory: {}", path.display());
+        println!("{}", result.err().unwrap());
+    }
+}
+
 pub fn exit(filepath: &Vec<String>, cwd: &mut PathBuf){
     std::process::exit(0)
 }
