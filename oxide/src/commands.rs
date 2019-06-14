@@ -39,7 +39,7 @@ fn _list(filepath: &Path) -> io::Result<()> {
                     println!("Could not convert path to utf-8 string. What funky OS are you using?");
                 }
                 Some(filename) => {
-                    println!("{}", _form_list_string(&entry, &filename, filepath));
+                    println!("{}", _form_list_string(&entry, &filename));
                 }
             }
         }
@@ -51,23 +51,38 @@ fn _list(filepath: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn _form_list_string(file: &DirEntry, filename: &str, file_path: &Path) -> String {
+fn _form_list_string(file: &DirEntry, filename: &str) -> String {
     let metadata_result = file.metadata();
 
     if metadata_result.is_ok() {
         let metadata = metadata_result.unwrap();
-        return format!("{0: <6}  {1}  {2: <9}  {3}", _get_file_type_string(file), _get_file_modified(&metadata), _get_file_size(&metadata), filename);
+        return format!("{0: <6}  {1}  {2: <9}  {3}", _get_file_type_string(file), _get_file_modified(&metadata), _get_file_size(&metadata, &file.path()), filename);
     } else {
         return format!("{}", filename);
     }
 }
 
-fn _get_file_size(metadata: &Metadata) -> String {
-    // TODO: fix directories being zero on Windows
-    // TODO: decide on system for displaying sizes in what units
-    let mut size: f64 = metadata.len() as f64;
-    size /= 1e3;
+#[cfg(target_family = "unix")]
+fn _get_file_size(metadata: &Metadata, path: &Path) -> String {
+    return _convert_bytes_to_string(metadata.len());
+}
 
+#[cfg(target_family = "windows")]
+fn _get_file_size(metadata: &Metadata, path: &Path) -> String {
+    let total_size = walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(|metadata| metadata.is_file())
+        .fold(0, |acc, m| acc + m.len());
+
+    return _convert_bytes_to_string(total_size);
+}
+
+fn _convert_bytes_to_string(size: u64) -> String {
+    // TODO: decide on system for displaying sizes in what units
+    let mut size: f64 = size as f64;
+    size /= 1e3;
     return format!("{:.2} KB", size);
 }
 
