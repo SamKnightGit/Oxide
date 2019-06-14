@@ -11,7 +11,6 @@ use commands::{list, show, exit, change_directory};
 const PROMPT: &str = ">> ";
 const DEBUG: bool = true;
 
-
 lazy_static! {
     static ref COMMANDS: HashMap<String, fn(&Vec<String>, &mut PathBuf) -> ()> = {
         let mut command_hm = HashMap::new();
@@ -57,15 +56,22 @@ fn parse_command(input: &mut String) -> Vec<String> {
 }
 
 fn execute_command(input: &mut String, cwd: &mut PathBuf) {
-    println!("Executing on following string: {}", input);
+    if DEBUG{
+        println!("Executing on following string: {}", input);
+    }
+
     // Change this in future to return an iterator of (command, args)
     let commands: Vec<String> = parse_command(input);
     process_command(&commands[0], &commands[1..].to_vec(), cwd);
 }
 
 fn process_command(command: &String, inputs: &Vec<String>, cwd: &mut PathBuf) {
-    println!("Command: {}", command);
-    println!("Inputs: {:?}", inputs); 
+
+    if DEBUG{
+        println!("Command: {}", command);
+        println!("Inputs: {:?}", inputs);
+    }
+
     match COMMANDS.get(command) {
         None => {
             println!("Command {} not understood", command);
