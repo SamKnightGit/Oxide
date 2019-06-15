@@ -1,5 +1,5 @@
 use core::fmt::Debug;
-use std::fs::{DirEntry, Metadata, metadata, read_dir, read_to_string};
+use std::fs::{DirEntry, Metadata, metadata, read_dir, read_to_string, remove_file};
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,9 +11,9 @@ use chrono::Local;
 #[cfg(target_family = "windows")]
 use crate::windows_clear;
 
-pub fn list(filepath: &Vec<String>, cwd: &mut PathBuf) {
+pub fn list(filepath: &Vec<String>) {
     if filepath.len() == 0 {
-        _list(cwd);
+        _list(&std::env::current_dir().unwrap());
         return;
     }
 
@@ -110,7 +110,7 @@ fn _get_file_type_string(file: &DirEntry) -> &str {
 }
 
 
-pub fn change_directory(filepath: &Vec<String>, cwd: &mut PathBuf) {
+pub fn change_directory(filepath: &Vec<String>) {
 
     // Copy bash's behaviour
     if filepath.len() == 0 {
@@ -139,7 +139,7 @@ fn _change_directory(filepath: &Path) {
 }
 
 
-pub fn show(filepath: &Vec<String>, cwd: &mut PathBuf) {
+pub fn show(filepath: &Vec<String>) {
     if filepath.len() == 0 {
         println!("Pass in a file and I will SHOW you the contents");
         return;
@@ -165,7 +165,7 @@ fn _show(filepath: &Path) {
     }
 }
 
-pub fn clear(filepath: &Vec<String>, cwd: &mut PathBuf) {
+pub fn clear(filepath: &Vec<String>) {
     _clear();
 }
 
@@ -179,7 +179,7 @@ fn _clear() {
     windows_clear::clear_screen_windows();
 }
 
-pub fn mkdir(filepath: &Vec<String>, cwd: &mut PathBuf) {
+pub fn mkdir(filepath: &Vec<String>) {
     let file_paths: Vec<&Path> = filepath.iter().map(Path::new).collect();
 
     for path in file_paths {
@@ -200,6 +200,51 @@ fn _mkdir(path: &Path) {
     }
 }
 
-pub fn exit(filepath: &Vec<String>, cwd: &mut PathBuf) {
+pub fn remove(filepath: &Vec<String>) {
+    let file_paths: Vec<&Path> = filepath.iter().map(Path::new).collect();
+
+    for path in file_paths {
+        _remove(path);
+    }
+}
+
+fn _remove(path: &Path) {
+    if !path.exists() {
+        println!("Could not find the file: {}", path.display());
+        return
+    }
+
+    if path.is_dir() {
+        println!("Found a folder, would you like to remove all contents in: \n {} ? (y,n)", path.display());
+        let mut remove_dir_confirm = String::new();
+        match io::stdin().read_line(&mut remove_dir_confirm) {
+            Ok(_) => {
+                if remove_dir_confirm == "y" {
+                    _remove_all(path);
+                }
+            }
+            Err(error) => println!("Error reading input: {}", error),
+        }
+    }
+
+    else {
+        remove_file(path);
+        _print_remove(path);
+    }
+}
+
+fn _print_remove(path: &Path) {
+    println!("Removed file: {}", path.display());
+}
+
+pub fn remove_all(filepath: &Vec<String>) {
+    println!("In remove all!");
+}
+
+fn _remove_all(path: &Path) {
+    println!("_remove_all");
+}
+
+pub fn exit(filepath: &Vec<String>) {
     std::process::exit(0)
 }
