@@ -1,26 +1,25 @@
 #[macro_use]
 extern crate lazy_static;
 
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-mod commands;
 
 use commands::change_folder::change_folder;
-use commands::clear::clear;
-use commands::create_folder::create_folder; 
-use commands::exit::exit;
-use commands::list::list;
-use commands::remove_folder::remove_folder;
-use commands::remove::remove; 
-use commands::show::show;
-
 #[cfg(target_family = "unix")]
-use commands::create::create;
-
+use commands::clear::clear;
 #[cfg(target_family = "windows")]
 use commands::clear_windows::clear;
+use commands::create::create;
+use commands::create_folder::create_folder;
+use commands::exit::exit;
+use commands::list::list;
+use commands::remove::remove;
+use commands::remove_folder::remove_folder;
+use commands::show::show;
+
+mod commands;
 
 const PROMPT: &str = ">> ";
 const DEBUG: bool = false;

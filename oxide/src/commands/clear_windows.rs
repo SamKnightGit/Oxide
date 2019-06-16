@@ -1,16 +1,18 @@
 extern crate kernel32;
 extern crate winapi;
 
+use std::path::Path;
+
+use winapi::DWORD;
 use winapi::HANDLE;
 use winapi::wincon::CONSOLE_SCREEN_BUFFER_INFO;
 use winapi::wincon::COORD;
 use winapi::wincon::SMALL_RECT;
 use winapi::WORD;
-use winapi::DWORD;
 
 static mut CONSOLE_HANDLE: Option<HANDLE> = None;
 
-pub fn clear() {
+pub fn clear(filepaths: Vec<&Path>) {
     clear_screen_windows();
 }
 

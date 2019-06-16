@@ -1,8 +1,8 @@
-use std::path::Path;
-use std::fs::{remove_file};
+use std::fs::remove_file;
 use std::io;
+use std::path::Path;
 
-use super::remove_folder::{_remove_folder};
+use super::remove_folder::_remove_folder;
 
 pub fn remove(filepaths: Vec<&Path>) {
     for path in filepaths {
@@ -21,7 +21,9 @@ fn _remove(path: &Path) {
         let mut remove_dir_confirm = String::new();
         match io::stdin().read_line(&mut remove_dir_confirm) {
             Ok(_) => {
-                if remove_dir_confirm == "y" {
+                println!("input: {}", remove_dir_confirm);
+                // must trim because newline char is present in string read by read_line
+                if remove_dir_confirm.trim() == "y".to_string() {
                     _remove_folder(path);
                 }
             }
