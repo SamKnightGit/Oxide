@@ -21,7 +21,6 @@ fn _remove(path: &Path) {
         let mut remove_dir_confirm = String::new();
         match io::stdin().read_line(&mut remove_dir_confirm) {
             Ok(_) => {
-                println!("input: {}", remove_dir_confirm);
                 // must trim because newline char is present in string read by read_line
                 if remove_dir_confirm.trim() == "y".to_string() {
                     _remove_folder(path);
