@@ -10,6 +10,32 @@ use winapi::DWORD;
 
 static mut CONSOLE_HANDLE: Option<HANDLE> = None;
 
+pub fn clear() {
+    clear_screen_windows();
+}
+
+pub fn clear_screen_windows() {
+    let handle = get_output_handle();
+    if handle == winapi::INVALID_HANDLE_VALUE {
+        panic!("NoConsole")
+    }
+
+    let screen_buffer = get_buffer_info();
+    let console_size: DWORD = screen_buffer.dwSize.X as u32 * screen_buffer.dwSize.Y as u32;
+    let coord_screen = COORD { X: 0, Y: 0 };
+
+    let mut amount_chart_written: DWORD = 0;
+    unsafe {
+        kernel32::FillConsoleOutputCharacterW(
+            handle,
+            32 as winapi::WCHAR,
+            console_size,
+            coord_screen,
+            &mut amount_chart_written,
+        );
+    }
+    set_cursor_position(0, 0);
+}
 
 fn get_output_handle() -> HANDLE {
     unsafe {
@@ -46,30 +72,7 @@ fn get_buffer_info() -> winapi::CONSOLE_SCREEN_BUFFER_INFO {
     buffer
 }
 
-pub fn clear_screen_windows() {
-    let handle = get_output_handle();
-    if handle == winapi::INVALID_HANDLE_VALUE {
-        panic!("NoConsole")
-    }
-
-    let screen_buffer = get_buffer_info();
-    let console_size: DWORD = screen_buffer.dwSize.X as u32 * screen_buffer.dwSize.Y as u32;
-    let coord_screen = COORD { X: 0, Y: 0 };
-
-    let mut amount_chart_written: DWORD = 0;
-    unsafe {
-        kernel32::FillConsoleOutputCharacterW(
-            handle,
-            32 as winapi::WCHAR,
-            console_size,
-            coord_screen,
-            &mut amount_chart_written,
-        );
-    }
-    set_cursor_possition(0, 0);
-}
-
-fn set_cursor_possition(y: i16, x: i16) {
+fn set_cursor_position(y: i16, x: i16) {
     let handle = get_output_handle();
     if handle == winapi::INVALID_HANDLE_VALUE {
         panic!("NoConsole")

@@ -7,26 +7,48 @@ use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 mod commands;
 
+use commands::change_folder::change_folder;
+use commands::clear::clear;
+use commands::create_folder::create_folder; 
+use commands::exit::exit;
+use commands::list::list;
+use commands::remove_folder::remove_folder;
+use commands::remove::remove; 
+use commands::show::show;
+
+#[cfg(target_family = "unix")]
+use commands::create::create;
 
 #[cfg(target_family = "windows")]
-mod windows_clear;
-
-use commands::{list, show, exit, change_directory, clear, mkdir, remove};
-
+use commands::clear_windows::clear;
 
 const PROMPT: &str = ">> ";
 const DEBUG: bool = false;
 
 lazy_static! {
-    static ref COMMANDS: HashMap<String, fn(&Vec<String>) -> ()> = {
+    static ref COMMANDS: HashMap<String, fn(Vec<&Path>) -> ()> = {
         let mut command_hm = HashMap::new();
-        command_hm.insert("ls".to_string(), list as fn(&Vec<String>) -> ());
+        command_hm.insert("ls".to_string(), list as fn(Vec<&Path>) -> ());
+        command_hm.insert("list".to_string(), list);
+
         command_hm.insert("cat".to_string(), show);
+        command_hm.insert("show".to_string(), show);
+
         command_hm.insert("exit".to_string(), exit);
-        command_hm.insert("cd".to_string(), change_directory);
+
+        command_hm.insert("cd".to_string(), change_folder);
+        command_hm.insert("cf".to_string(), change_folder);
+
         command_hm.insert("clear".to_string(), clear);
-        command_hm.insert("mkdir".to_string(), mkdir);
+
+        command_hm.insert("mkdir".to_string(), create_folder);
+        command_hm.insert("createf".to_string(), create_folder);
+
+        command_hm.insert("rm".to_string(), remove);
         command_hm.insert("remove".to_string(), remove);
+
+        command_hm.insert("touch".to_string(), create);
+        command_hm.insert("create".to_string(), create);
 
         command_hm
     };
@@ -69,14 +91,14 @@ fn execute_command(input: &mut String) {
     // TODO: Change this in future to return an iterator of (command, args)
     let commands: Vec<String> = parse_command(input);
     let command = &commands[0];
-    let arguments = &commands[1..].to_vec();
+    let arguments = commands[1..].iter().map(Path::new).collect::<Vec<&Path>>();
     
     match COMMANDS.get(command) {
         None => {
             println!("Command {} not understood", command);
         }
         Some(comm) => {
-            comm(&arguments);
+            comm(arguments);
         }
     } 
 }
