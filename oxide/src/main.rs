@@ -1,10 +1,16 @@
 #[macro_use]
 extern crate lazy_static;
+extern crate rustyline;
+
+use rustyline::Editor;
+use rustyline::error::ReadlineError;
 
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
+
+mod config;
 
 use commands::change_folder::change_folder;
 #[cfg(target_family = "unix")]
@@ -55,17 +61,29 @@ lazy_static! {
 
 fn main() {
     println!("Welcome to Oxide! A shell written entirely in Rust.");
+    let mut rl = rustyline::Editor::<()>::new();
+    
+    let oxide_history: (bool, PathBuf) = config::get_oxide_history();
+    let history_exists = oxide_history.0;
+    let oxide_history_path = oxide_history.1;
+    
+    if history_exists {
+        if rl.load_history(&oxide_history_path).is_err() && DEBUG {
+            println!("Could not find history at: {}", oxide_history_path.display());
+        }
+    }
 
     loop {
-        print!("{0} {1}", std::env::current_dir().unwrap().to_str().unwrap(), PROMPT);
-        io::stdout().flush().unwrap();
-        
+        let prompt = format!("{0} {1}", std::env::current_dir().unwrap().to_str().unwrap(), PROMPT);
+        let readline = rl.readline(&prompt);
+
         let mut input = String::new();
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
+        match readline {
+            Ok(mut input) => {
                 if DEBUG {
                     println!("Read the following: {}", input);
                 }
+                rl.add_history_entry(input.as_ref());
                 execute_command(&mut input);
             }
             Err(error) => {
@@ -73,6 +91,8 @@ fn main() {
             }
         } 
     }
+
+    rl.save_history(&oxide_history_path);
 }
 
 

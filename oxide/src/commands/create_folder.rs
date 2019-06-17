@@ -14,7 +14,7 @@ fn _create_folder(path: &Path) {
     let result = std::fs::create_dir_all(path);
 
     if result.is_err() {
-        println!("Failed to create directory: {}", path.display());
+        println!("Failed to create folder: {}", path.display());
         println!("{}", result.err().unwrap());
     }
 }

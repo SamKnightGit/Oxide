@@ -1,4 +1,5 @@
-use std::fs::{read_to_string};
+use std::fs::{File, read_to_string};
+use std::io::{self, BufReader, BufRead};
 use std::path::Path;
 
 pub fn show(filepaths: Vec<&Path>) {
@@ -7,11 +8,10 @@ pub fn show(filepaths: Vec<&Path>) {
         return;
     }
 
-    for path in filepaths {
+    for path in &filepaths {
         _show(path);
     }
 }
-
 fn _show(filepath: &Path) {
     if !filepath.is_file() {
         println!("Cannot print out non-file contents.");
@@ -25,3 +25,24 @@ fn _show(filepath: &Path) {
     }
 }
 
+/*
+_show_buffer may be faster for large files? 
+On small files has been tested to be slower than _show
+
+fn _show_buffer(filepath: &Path) -> io::Result<()> {
+    if !filepath.is_file() {
+        println!("Cannot print out non-file contents.");
+        return Ok(());
+    }
+    println!("Showing file {}", filepath.display());
+    let file = File::open(filepath)?;
+    let file = BufReader::new(file);
+    for line in file.lines() {
+        println!("{}", line.unwrap());
+    }
+
+    Ok(())
+}
+
+
+*/
