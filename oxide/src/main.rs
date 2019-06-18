@@ -2,12 +2,17 @@
 extern crate lazy_static;
 extern crate rustyline;
 
+use std::borrow::Cow::{self, Borrowed, Owned};
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 
-use rustyline::Editor;
+use rustyline::completion::{Completer, FilenameCompleter, Pair};
+use rustyline::config::OutputStreamType;
+use rustyline::{CompletionType, Editor, Config, EditMode, Context, Helper};
+use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
+use rustyline::hint::{Hinter, HistoryHinter};
 use rustyline::error::ReadlineError;
 
 use commands::change_folder::change_folder;
@@ -59,10 +64,57 @@ lazy_static! {
     };
 }
 
+
+struct MyHelper {
+    completer: FilenameCompleter,
+    highlighter: MatchingBracketHighlighter,
+    hinter: HistoryHinter,
+    colored_prompt: String,
+}
+
+impl Completer for MyHelper {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &Context<'_>,
+    ) -> Result<(usize, Vec<Pair>), ReadlineError> {
+        self.completer.complete(line, pos, ctx)
+    }
+}
+
+impl Hinter for MyHelper {
+    fn hint(&self, line: &str, pos: usize, ctx: &Context<'_>) -> Option<String> {
+        self.hinter.hint(line, pos, ctx)
+    }
+}
+
+impl Highlighter for MyHelper {}
+
+impl Helper for MyHelper {}
+
+
 fn main() {
     println!("Welcome to Oxide! A shell written entirely in Rust.");
-    let mut rl = rustyline::Editor::<()>::new();
-    
+    let rl_config = Config::builder()
+        .history_ignore_space(true)
+        .completion_type(CompletionType::List)
+        .edit_mode(EditMode::Emacs)
+        .output_stream(OutputStreamType::Stdout)
+        .build();
+
+    let helper = MyHelper {
+        completer: FilenameCompleter::new(),
+        highlighter: MatchingBracketHighlighter::new(),
+        hinter: HistoryHinter {},
+        colored_prompt: "".to_owned(),
+    };
+
+    let mut rl = Editor::with_config(rl_config);
+    rl.set_helper(Some(helper));
+
     let oxide_history: (bool, PathBuf) = config::get_oxide_history();
     let history_exists = oxide_history.0;
     let oxide_history_path = oxide_history.1;
