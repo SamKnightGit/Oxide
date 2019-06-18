@@ -2,15 +2,13 @@
 extern crate lazy_static;
 extern crate rustyline;
 
-use rustyline::Editor;
-use rustyline::error::ReadlineError;
-
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 
-mod config;
+use rustyline::Editor;
+use rustyline::error::ReadlineError;
 
 use commands::change_folder::change_folder;
 #[cfg(target_family = "unix")]
@@ -24,6 +22,8 @@ use commands::list::list;
 use commands::remove::remove;
 use commands::remove_folder::remove_folder;
 use commands::show::show;
+
+mod config;
 
 mod commands;
 
@@ -83,16 +83,15 @@ fn main() {
                 if DEBUG {
                     println!("Read the following: {}", input);
                 }
-                rl.add_history_entry(input.as_ref());
+                rl.add_history_entry(input.as_str().trim());
                 execute_command(&mut input);
+                rl.save_history(&oxide_history_path);
             }
             Err(error) => {
                 println!("Error when reading from input: {}", error);
             }
         } 
     }
-
-    rl.save_history(&oxide_history_path);
 }
 
 
