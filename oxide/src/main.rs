@@ -91,7 +91,26 @@ impl Hinter for MyHelper {
     }
 }
 
-impl Highlighter for MyHelper {}
+impl Highlighter for MyHelper {
+    fn highlight_prompt<'p>(
+        &self,
+        prompt: &'p str,
+    ) -> Cow<'p, str> {
+        Borrowed(prompt)
+    }
+
+    fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+        Owned("\x1b[37;2m".to_owned() + hint + "\x1b[m")
+    }
+
+    fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
+        self.highlighter.highlight(line, pos)
+    }
+
+    fn highlight_char(&self, line: &str, pos: usize) -> bool {
+        self.highlighter.highlight_char(line, pos)
+    }
+}
 
 impl Helper for MyHelper {}
 
@@ -127,6 +146,7 @@ fn main() {
 
     loop {
         let prompt = format!("{0} {1}", std::env::current_dir().unwrap().to_str().unwrap(), PROMPT);
+        rl.helper_mut().unwrap().colored_prompt = format!("\x1b[1;32m{}\x1b[0m", prompt);
         let readline = rl.readline(&prompt);
 
         let mut input = String::new();
