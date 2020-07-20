@@ -10,10 +10,12 @@ use std::path::{Path, PathBuf};
 
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::config::OutputStreamType;
-use rustyline::{CompletionType, Editor, Config, EditMode, Context, Helper};
+use rustyline::{CompletionType, Editor, Config, EditMode, Context};
 use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
 use rustyline::hint::{Hinter, HistoryHinter};
+use rustyline::validate::{self, MatchingBracketValidator, Validator};
 use rustyline::error::ReadlineError;
+use rustyline::Helper;
 
 use commands::change_folder::change_folder;
 #[cfg(target_family = "unix")]
@@ -68,6 +70,7 @@ lazy_static! {
 struct MyHelper {
     completer: FilenameCompleter,
     highlighter: MatchingBracketHighlighter,
+    validator: MatchingBracketValidator,
     hinter: HistoryHinter,
     colored_prompt: String,
 }
@@ -91,16 +94,22 @@ impl Hinter for MyHelper {
     }
 }
 
+
 impl Highlighter for MyHelper {
-    fn highlight_prompt<'p>(
-        &self,
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+        &'s self,
         prompt: &'p str,
-    ) -> Cow<'p, str> {
-        Borrowed(prompt)
+        default: bool,
+    ) -> Cow<'b, str> {
+        if default {
+            Borrowed(&self.colored_prompt)
+        } else {
+            Borrowed(prompt)
+        }
     }
 
     fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-        Owned("\x1b[37;2m".to_owned() + hint + "\x1b[m")
+        Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
     }
 
     fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
@@ -112,8 +121,20 @@ impl Highlighter for MyHelper {
     }
 }
 
-impl Helper for MyHelper {}
+impl Validator for MyHelper {
+    fn validate(
+        &self,
+        ctx: &mut validate::ValidationContext,
+    ) -> rustyline::Result<validate::ValidationResult> {
+        self.validator.validate(ctx)
+    }
 
+    fn validate_while_typing(&self) -> bool {
+        self.validator.validate_while_typing()
+    }
+}
+
+impl Helper for MyHelper {}
 
 fn main() {
     println!("Welcome to Oxide! A shell written entirely in Rust.");
@@ -129,6 +150,7 @@ fn main() {
         highlighter: MatchingBracketHighlighter::new(),
         hinter: HistoryHinter {},
         colored_prompt: "".to_owned(),
+        validator: MatchingBracketValidator::new(),
     };
 
     let mut rl = Editor::with_config(rl_config);
@@ -158,6 +180,13 @@ fn main() {
                 rl.add_history_entry(input.as_str().trim());
                 execute_command(&mut input);
                 rl.save_history(&oxide_history_path);
+            }
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+            }
+            Err(ReadlineError::Eof) => {
+                println!("Exiting!");
+                break;
             }
             Err(error) => {
                 println!("Error when reading from input: {}", error);
