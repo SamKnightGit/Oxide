@@ -10,6 +10,7 @@ chrono = "0.4.6"
 walkdir = "2.2.8"
 rustyline = "6.2.0"
 dirs = "2.0.1"
+termion = "1.5.5"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.2.8"

@@ -1,5 +1,4 @@
-use std::fs::{File, read_to_string};
-use std::io::{self, BufReader, BufRead};
+use std::fs::{read_to_string};
 use std::path::Path;
 
 pub fn show(filepaths: Vec<&Path>) {

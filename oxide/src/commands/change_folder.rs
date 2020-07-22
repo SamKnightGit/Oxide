@@ -20,7 +20,11 @@ fn _change_folder(filepath: &Path) {
     let path_string = filepath.to_str().unwrap();
 
     if filepath.is_dir() {
-        std::env::set_current_dir(filepath);
+        match std::env::set_current_dir(filepath) 
+        {
+            Ok(_) => (),
+            Err(err) => println!("Failed to change folder with error: {}", err), 
+        }
     } else if filepath.is_file() {
         println!("\"{}\" is a file not a directory", path_string);
     } else {

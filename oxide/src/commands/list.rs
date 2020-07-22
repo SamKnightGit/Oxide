@@ -6,18 +6,27 @@ use chrono::Local;
 
 pub fn list(filepaths: Vec<&Path>) {
     if filepaths.len() == 0 {
-        _list(&std::env::current_dir().unwrap());
+        match _list(&std::env::current_dir().unwrap()) {
+            Ok(_) => {},
+            Err(err) => println!("Error in list operation {}", err),
+        }
         return;
     }
 
     if filepaths.len() == 1 {
-        _list(filepaths[0]);
+        match _list(filepaths[0]) {
+            Ok(_) => {},
+            Err(err) => println!("Error in list operation {}", err),
+        }
         return;
     }
 
     for path in filepaths {
         println!("{}", path.display());
-        _list(path);
+        match _list(path) {
+            Ok(_) => {},
+            Err(err) => println!("Error in list operation {}", err),
+        }
     }
 }
 
@@ -54,7 +63,7 @@ fn _form_list_string(file: &DirEntry, filename: &str) -> String {
 }
 
 #[cfg(target_family = "unix")]
-fn _get_file_size(metadata: &Metadata, path: &Path) -> String {
+fn _get_file_size(metadata: &Metadata, _path: &Path) -> String {
     return _convert_bytes_to_string(metadata.len());
 }
 

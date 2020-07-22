@@ -4,7 +4,6 @@ extern crate rustyline;
 
 use std::borrow::Cow::{self, Borrowed, Owned};
 use std::collections::HashMap;
-use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 
@@ -23,11 +22,12 @@ use commands::clear::clear;
 #[cfg(target_family = "windows")]
 use commands::clear_windows::clear;
 use commands::create::create;
-use commands::create_folder::create_folder;
+use commands::create::touch;
+use commands::create::create_folder;
 use commands::exit::exit;
 use commands::list::list;
 use commands::remove::remove;
-use commands::remove_folder::remove_folder;
+use commands::remove::remove_folder;
 use commands::show::show;
 
 mod config;
@@ -38,29 +38,32 @@ const PROMPT: &str = ">> ";
 const DEBUG: bool = false;
 
 lazy_static! {
-    static ref COMMANDS: HashMap<String, fn(Vec<&Path>) -> ()> = {
+    static ref COMMANDS: HashMap<&'static str, fn(Vec<&Path>) -> ()> = {
         let mut command_hm = HashMap::new();
-        command_hm.insert("ls".to_string(), list as fn(Vec<&Path>) -> ());
-        command_hm.insert("list".to_string(), list);
+        command_hm.insert("ls", list as fn(Vec<&Path>) -> ());
+        command_hm.insert("list", list);
 
-        command_hm.insert("cat".to_string(), show);
-        command_hm.insert("show".to_string(), show);
+        command_hm.insert("cat", show);
+        command_hm.insert("show", show);
 
-        command_hm.insert("exit".to_string(), exit);
+        command_hm.insert("exit", exit);
 
-        command_hm.insert("cd".to_string(), change_folder);
-        command_hm.insert("cf".to_string(), change_folder);
+        command_hm.insert("cd", change_folder);
+        command_hm.insert("cf", change_folder);
 
-        command_hm.insert("clear".to_string(), clear);
+        command_hm.insert("clear", clear);
 
-        command_hm.insert("mkdir".to_string(), create_folder);
-        command_hm.insert("createf".to_string(), create_folder);
+        command_hm.insert("mkdir", create_folder);
+        command_hm.insert("createf", create_folder);
 
-        command_hm.insert("rm".to_string(), remove);
-        command_hm.insert("remove".to_string(), remove);
+        command_hm.insert("rm", remove);
+        command_hm.insert("remove", remove);
 
-        command_hm.insert("touch".to_string(), create);
-        command_hm.insert("create".to_string(), create);
+        command_hm.insert("rmf", remove_folder);
+        command_hm.insert("removef", remove_folder);
+
+        command_hm.insert("create", create);
+        command_hm.insert("touch", touch);
 
         command_hm
     };
@@ -171,7 +174,7 @@ fn main() {
         rl.helper_mut().unwrap().colored_prompt = format!("\x1b[1;32m{}\x1b[0m", prompt);
         let readline = rl.readline(&prompt);
 
-        let mut input = String::new();
+        //let mut input = String::new();
         match readline {
             Ok(mut input) => {
                 if DEBUG {
@@ -179,7 +182,14 @@ fn main() {
                 }
                 rl.add_history_entry(input.as_str().trim());
                 execute_command(&mut input);
-                rl.save_history(&oxide_history_path);
+                match rl.save_history(&oxide_history_path) {
+                    Ok(_) => {
+                        if DEBUG {
+                            println!("History saved.")
+                        }
+                    },
+                    Err(err) => println!("Error saving history: {}", err),
+                }
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
@@ -196,9 +206,9 @@ fn main() {
 }
 
 
-fn parse_command(input: &mut String) -> Vec<String> {
+fn parse_command(input: &mut String) -> Vec<&str> {
     let command_vector = input.split_whitespace();
-    let commands: Vec<String> = Vec::from_iter(command_vector.map(String::from));
+    let commands: Vec<&str> = Vec::from_iter(command_vector);
     commands
 }
 
@@ -208,7 +218,7 @@ fn execute_command(input: &mut String) {
     }
 
     // TODO: Change this in future to return an iterator of (command, args)
-    let commands: Vec<String> = parse_command(input);
+    let commands: Vec<&str> = parse_command(input);
     let command = &commands[0];
     let arguments = commands[1..].iter().map(Path::new).collect::<Vec<&Path>>();
     
