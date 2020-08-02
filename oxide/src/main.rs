@@ -16,6 +16,7 @@ use rustyline::validate::{self, MatchingBracketValidator, Validator};
 use rustyline::error::ReadlineError;
 use rustyline::Helper;
 
+mod commands;
 use commands::change_folder::change_folder;
 #[cfg(target_family = "unix")]
 use commands::clear::clear;
@@ -30,9 +31,11 @@ use commands::remove::remove;
 use commands::remove::remove_folder;
 use commands::show::show;
 
+mod parser;
+use parser::parse_input;
+
 mod config;
 
-mod commands;
 
 const PROMPT: &str = ">> ";
 const DEBUG: bool = false;
@@ -219,6 +222,7 @@ fn execute_command(input: &mut String) {
 
     // TODO: Change this in future to return an iterator of (command, args)
     let commands: Vec<&str> = parse_command(input);
+    parse_input(&commands);
     let command = &commands[0];
     let arguments = commands[1..].iter().map(Path::new).collect::<Vec<&Path>>();
     
