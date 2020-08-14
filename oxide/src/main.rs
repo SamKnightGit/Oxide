@@ -32,6 +32,8 @@ use commands::remove::remove_folder;
 use commands::show::show;
 
 mod parser;
+use parser::ParseNodeType;
+use parser::ParseNode;
 use parser::parse_input;
 
 mod config;
@@ -184,7 +186,7 @@ fn main() {
                     println!("Read the following: {}", input);
                 }
                 rl.add_history_entry(input.as_str().trim());
-                execute_command(&mut input);
+                execute_input(&mut input);
                 match rl.save_history(&oxide_history_path) {
                     Ok(_) => {
                         if DEBUG {
@@ -209,23 +211,124 @@ fn main() {
 }
 
 
-fn parse_command(input: &mut String) -> Vec<&str> {
+fn split_input(input: &mut String) -> Vec<&str> {
     let command_vector = input.split_whitespace();
     let commands: Vec<&str> = Vec::from_iter(command_vector);
     commands
 }
 
-fn execute_command(input: &mut String) {
+fn execute_input(input: &mut String) {
     if DEBUG{
         println!("Executing on following string: {}", input);
     }
 
-    // TODO: Change this in future to return an iterator of (command, args)
-    let commands: Vec<&str> = parse_command(input);
-    parse_input(&commands);
-    let command = &commands[0];
-    let arguments = commands[1..].iter().map(Path::new).collect::<Vec<&Path>>();
+    let commands: Vec<&str> = split_input(input);
+    let ast_root;
+    match parse_input(&commands) {
+        Ok(ast) => ast_root = ast,
+        Err(e) => {
+            println!("{}", e);
+            return
+        }
+    }
+    read_ast_and_execute(&ast_root);
+    println!("Parse Tree: {:?}", ast_root);
+    //let command = &commands[0];
+    //let arguments = commands[1..].iter().map(Path::new).collect::<Vec<&Path>>();
     
+    //execute_command(command, arguments); 
+}
+
+fn read_ast_and_execute(ast_root: &ParseNode) {
+    let expr_children = ast_root.children.as_ref().unwrap();
+    
+    let command_expr_children = expr_children[0].children.as_ref().unwrap();
+    let (command, arguments) = read_command_expr(command_expr_children);
+    
+    if expr_children.len() == 1
+    {
+        // Single command expression
+        execute_command(command, arguments);
+    }
+    else
+    {
+        // Command expression, redirect expression || Command expression, pipe expression
+        if expr_children[1].entry == ParseNodeType::PipeExpr
+        {
+            let pipe_expr_children = expr_children[1].children.as_ref().unwrap()
+            let pipe_command_expr_children = pipe_expr_children[1].children.as_ref().unwrap();
+            let (pipe_command, pipe_arguments) = 
+                read_command_expr(pipe_command_expr_children);
+        }
+        else
+        {
+            let redirection_expr_children = expr_children[1].children.as_ref().unwrap();
+            let (redirection_op, filelist) = read_redirection_expr(redirection_expr_children);
+            match redirection_op {
+                ">" => redirect_overwrite(command, arguments, filelist),
+                ">>" => redirect_append(command, arguments, filelist),
+                "<" => redirect_input(command, arguments, filelist),
+                _ => println!("Unexpected redirection operation: {}", redirection_op), 
+            }
+        }
+    }
+}
+
+fn read_command_expr(command_expr_children: &Vec<ParseNode>) -> (&str, Vec<&Path>)
+{
+    let mut command: &str = "";
+    let mut arguments: Vec<&Path> = Vec::new();
+    for node in command_expr_children.iter() 
+    {
+        match &node.entry
+        {
+            ParseNodeType::Command(command_name) => command = command_name,
+            ParseNodeType::File(filename) => arguments.push(Path::new(filename)),
+            _ => eprintln!("Unexpected parsenode in command expression!")
+        } 
+    }
+    return (command, arguments)
+}
+
+fn read_pipe_expr(pipe_expr_children: &Vec<ParseNode>) -> (&str, Vec<&Path>)
+{
+    
+    return ("", Vec::new())
+}
+
+fn read_redirection_expr(redirection_expr_children: &Vec<ParseNode>) -> (&str, Vec<&Path>)
+{
+    let mut redirection_op: &str = "";
+    let mut filelist: Vec<&Path> = Vec::new();
+    for node in redirection_expr_children.iter()
+    {
+        match &node.entry
+        {
+            ParseNodeType::RedirectionOp(redirection_op_name) => redirection_op = redirection_op_name,
+            ParseNodeType::File(filename) => filelist.push(Path::new(filename)),
+            _ => eprintln!("Unexpected parsenode in redirection expression!")
+        }
+    }
+    return (redirection_op, filelist)
+}
+
+fn redirect_overwrite(command: &str, arguments: Vec<&Path>, filelist, Vec<&Path>)
+{
+
+}
+
+fn redirect_append(command: &str, arguments: Vec<&Path>, filelist, Vec<&Path>)
+{
+
+}
+
+fn redirect_input(command: &str, arguments: Vec<&Path>, filelist, Vec<&Path>)
+{
+
+}
+
+fn execute_command(command: &str, arguments: Vec<&Path>)
+{
     match COMMANDS.get(command) {
         None => {
             println!("Command {} not understood", command);
@@ -233,5 +336,5 @@ fn execute_command(input: &mut String) {
         Some(comm) => {
             comm(arguments);
         }
-    } 
+    }
 }

@@ -4,7 +4,7 @@ use std::fmt;
 type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug, Clone)]
-struct ParseError {
+pub struct ParseError {
     message: String
 }
 
@@ -28,10 +28,11 @@ lazy_static! {
         ].iter().cloned().collect();
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ParseNodeType {
     Expr,
     CommandExpr,
+    PipeExpr,
     RedirectionExpr,
     Command(String),
     File(String),
@@ -41,20 +42,16 @@ pub enum ParseNodeType {
 
 #[derive(Debug)]
 pub struct ParseNode {
-    entry: ParseNodeType,
-    children: Option<Vec<ParseNode>>,
+    pub entry: ParseNodeType,
+    pub children: Option<Vec<ParseNode>>,
 } 
 
 
 
-pub fn parse_input(input_tokens: &Vec<&str>)
+pub fn parse_input(input_tokens: &Vec<&str>) -> Result<ParseNode>
 {
     let mut input_index: usize = 0; 
-    match parse_expr(input_tokens, &mut input_index) {
-        Ok(ast) => println!("{:?}", ast),
-        Err(e) => println!("Parsing Error: {0}", e),
-    }
-    
+    return parse_expr(input_tokens, &mut input_index);
 }
 
 fn parse_expr(input_tokens: &Vec<&str>, input_index: &mut usize) -> Result<ParseNode>
@@ -65,8 +62,19 @@ fn parse_expr(input_tokens: &Vec<&str>, input_index: &mut usize) -> Result<Parse
     };
     
     parse_command_expr(input_tokens, input_index, &mut parse_tree)?;
-   
-    parse_redirection_expr(input_tokens, input_index, &mut parse_tree)?;
+    
+    // More to parse
+    if *input_index < input_tokens.len()
+    {
+        if input_tokens[*input_index] == "|"
+        {
+            parse_pipe_expr(input_tokens, input_index, &mut parse_tree)?;
+        }
+        else
+        {
+            parse_redirection_expr(input_tokens, input_index, &mut parse_tree)?;
+        }
+    }
     
     return Ok(parse_tree)
 }
@@ -83,46 +91,68 @@ fn parse_command_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_no
     parse_filelist(input_tokens, input_index, &mut command_expr_node)?;
         
     tree_node.children.as_mut().unwrap().push(command_expr_node);
-    Ok(())
+    
+    return Ok(())
 }
 
-fn parse_redirection_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &mut ParseNode) -> Result<()>
+fn parse_pipe_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &mut ParseNode) -> Result<()>
 {
-    if *input_index == input_tokens.len()
+    if *input_index == input_tokens.len() 
     {
         return Ok(())
     }
+    
+    let mut pipe_expr_node = ParseNode {
+        entry: ParseNodeType::PipeExpr,
+        children: Some(Vec::new()),
+    };
 
+    let pipe_node = ParseNode {
+        entry: ParseNodeType::Pipe,
+        children: None,
+    };
+    pipe_expr_node.children.as_mut().unwrap().push(pipe_node);
+    *input_index += 1;
+
+    parse_command_expr(input_tokens, input_index, &mut pipe_expr_node)?;
+
+    parse_pipe_expr(input_tokens, input_index, &mut pipe_expr_node)?;
+
+    tree_node.children.as_mut().unwrap().push(pipe_expr_node);
+
+    return Ok(())
+}
+
+fn parse_redirection_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &mut ParseNode) -> Result<()>
+{ 
+    if *input_index == input_tokens.len() 
+    {
+        return Ok(())
+    }
+   
     let mut redirection_expr_node = ParseNode {
         entry: ParseNodeType::RedirectionExpr,
         children: Some(Vec::new()),
     };
 
-    if input_tokens[*input_index] == "|"
-    {
-        // Add pipe to AST
-        let pipe_node = ParseNode {
-            entry: ParseNodeType::Pipe,
-            children: None,
-        };
-        redirection_expr_node.children.as_mut().unwrap().push(pipe_node);
-        *input_index += 1;
-        parse_command_expr(input_tokens, input_index, &mut redirection_expr_node)?;
-            
-    }
-    else
-    {
-        parse_redirection_op(input_tokens, input_index, &mut redirection_expr_node)?;
+    parse_redirection_op(input_tokens, input_index, &mut redirection_expr_node)?;
         
-        parse_filelist(input_tokens, input_index, &mut redirection_expr_node)?; 
-    }
-
+    parse_filelist(input_tokens, input_index, &mut redirection_expr_node)?; 
+    
     tree_node.children.as_mut().unwrap().push(redirection_expr_node);
+    
     return Ok(())
 }
-
+    
 fn parse_command(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &mut ParseNode) -> Result<()>
-{
+{   
+    if *input_index == input_tokens.len() 
+    {
+        return Err(ParseError {
+            message: format!("reached end of input at token '{0}' but expected command.", input_tokens[*input_index - 1])
+        })
+    }
+
     let command = input_tokens[*input_index];
     if !COMMANDS.contains(command) {
         return Err(ParseError { 
