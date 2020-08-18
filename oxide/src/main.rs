@@ -6,6 +6,10 @@ use std::borrow::Cow::{self, Borrowed, Owned};
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::io::Write;
+use std::fs::File;
+use std::fs::OpenOptions;
 
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::config::OutputStreamType;
@@ -16,28 +20,20 @@ use rustyline::validate::{self, MatchingBracketValidator, Validator};
 use rustyline::error::ReadlineError;
 use rustyline::Helper;
 
+mod parser;
+use parser::ParseNodeType;
+use parser::ParseNode;
+use parser::parse_input;
+
 mod commands;
 use commands::change_folder::change_folder;
 #[cfg(target_family = "unix")]
 use commands::clear::clear;
 #[cfg(target_family = "windows")]
 use commands::clear_windows::clear;
-use commands::create::create;
-use commands::create::touch;
-use commands::create::create_folder;
 use commands::exit::exit;
-use commands::list::list;
-use commands::remove::remove;
-use commands::remove::remove_folder;
-use commands::show::show;
-
-mod parser;
-use parser::ParseNodeType;
-use parser::ParseNode;
-use parser::parse_input;
 
 mod config;
-
 
 const PROMPT: &str = ">> ";
 const DEBUG: bool = false;
@@ -45,33 +41,27 @@ const DEBUG: bool = false;
 lazy_static! {
     static ref COMMANDS: HashMap<&'static str, fn(Vec<&Path>) -> ()> = {
         let mut command_hm = HashMap::new();
-        command_hm.insert("ls", list as fn(Vec<&Path>) -> ());
-        command_hm.insert("list", list);
-
-        command_hm.insert("cat", show);
-        command_hm.insert("show", show);
-
-        command_hm.insert("exit", exit);
-
+        command_hm.insert("exit", exit as fn(Vec<&Path>) -> ());
         command_hm.insert("cd", change_folder);
         command_hm.insert("cf", change_folder);
-
         command_hm.insert("clear", clear);
-
-        command_hm.insert("mkdir", create_folder);
-        command_hm.insert("createf", create_folder);
-
-        command_hm.insert("rm", remove);
-        command_hm.insert("remove", remove);
-
-        command_hm.insert("rmf", remove_folder);
-        command_hm.insert("removef", remove_folder);
-
-        command_hm.insert("create", create);
-        command_hm.insert("touch", touch);
 
         command_hm
     };
+
+    static ref ALIASES: HashMap<&'static str, &'static str> = {
+        let mut alias_hm = HashMap::new();
+        alias_hm.insert("list", "ls");
+        alias_hm.insert("show", "cat");
+        alias_hm.insert("exit", "exit");
+        alias_hm.insert("remove", "rm");
+        alias_hm.insert("removef", "rm -r");
+        alias_hm.insert("create", "touch"); 
+        alias_hm.insert("createf", "mkdir");
+
+        alias_hm
+    };
+        
 }
 
 
@@ -233,10 +223,6 @@ fn execute_input(input: &mut String) {
     }
     read_ast_and_execute(&ast_root);
     println!("Parse Tree: {:?}", ast_root);
-    //let command = &commands[0];
-    //let arguments = commands[1..].iter().map(Path::new).collect::<Vec<&Path>>();
-    
-    //execute_command(command, arguments); 
 }
 
 fn read_ast_and_execute(ast_root: &ParseNode) {
@@ -247,15 +233,18 @@ fn read_ast_and_execute(ast_root: &ParseNode) {
     
     if expr_children.len() == 1
     {
-        // Single command expression
-        execute_command(command, arguments);
+        // Single command expression, print out result
+        match execute_command(command, arguments) {
+            Some(output) => print!("{}", output),
+            None => println!("Command {} not understood", command),
+        }
     }
     else
     {
         // Command expression, redirect expression || Command expression, pipe expression
         if expr_children[1].entry == ParseNodeType::PipeExpr
         {
-            let pipe_expr_children = expr_children[1].children.as_ref().unwrap()
+            let pipe_expr_children = expr_children[1].children.as_ref().unwrap();
             let pipe_command_expr_children = pipe_expr_children[1].children.as_ref().unwrap();
             let (pipe_command, pipe_arguments) = 
                 read_command_expr(pipe_command_expr_children);
@@ -265,8 +254,8 @@ fn read_ast_and_execute(ast_root: &ParseNode) {
             let redirection_expr_children = expr_children[1].children.as_ref().unwrap();
             let (redirection_op, filelist) = read_redirection_expr(redirection_expr_children);
             match redirection_op {
-                ">" => redirect_overwrite(command, arguments, filelist),
-                ">>" => redirect_append(command, arguments, filelist),
+                ">" => redirect_output(command, arguments, filelist, true),
+                ">>" => redirect_output(command, arguments, filelist, false),
                 "<" => redirect_input(command, arguments, filelist),
                 _ => println!("Unexpected redirection operation: {}", redirection_op), 
             }
@@ -274,23 +263,23 @@ fn read_ast_and_execute(ast_root: &ParseNode) {
     }
 }
 
-fn read_command_expr(command_expr_children: &Vec<ParseNode>) -> (&str, Vec<&Path>)
+fn read_command_expr(command_expr_children: &Vec<ParseNode>) -> (&str, Vec<&str>)
 {
     let mut command: &str = "";
-    let mut arguments: Vec<&Path> = Vec::new();
+    let mut arguments: Vec<&str> = Vec::new();
     for node in command_expr_children.iter() 
     {
         match &node.entry
         {
             ParseNodeType::Command(command_name) => command = command_name,
-            ParseNodeType::File(filename) => arguments.push(Path::new(filename)),
+            ParseNodeType::File(filename) => arguments.push(filename),
             _ => eprintln!("Unexpected parsenode in command expression!")
         } 
     }
     return (command, arguments)
 }
 
-fn read_pipe_expr(pipe_expr_children: &Vec<ParseNode>) -> (&str, Vec<&Path>)
+fn read_pipe_expr(pipe_expr_children: &Vec<ParseNode>) -> (&str, Vec<&str>)
 {
     
     return ("", Vec::new())
@@ -312,29 +301,65 @@ fn read_redirection_expr(redirection_expr_children: &Vec<ParseNode>) -> (&str, V
     return (redirection_op, filelist)
 }
 
-fn redirect_overwrite(command: &str, arguments: Vec<&Path>, filelist, Vec<&Path>)
+fn redirect_output(command: &str, arguments: Vec<&str>, filelist: Vec<&Path>, overwrite: bool)
+{
+    match execute_command(command, arguments) 
+    {
+        Some(output) => {
+            for file in filelist.iter()
+            {
+                // TODO: Do we want to warn people before we overwrite with > operator?
+                match OpenOptions::new()
+                                  .write(true)
+                                  .create(true)
+                                  .truncate(overwrite)
+                                  .append(!overwrite)
+                                  .open(file)
+                {
+                    Ok(mut fp) => {
+                        match fp.write_all(output.as_bytes()) 
+                        {
+                            Err(err) => eprintln!("{}", err),
+                            _ => (),
+                        }
+                    }
+                    Err(err) => eprintln!("{}", err),
+                }
+            }
+        }
+        None => println!("Command {} not understood", command), 
+    }
+}
+
+fn redirect_input(command: &str, arguments: Vec<&str>, filelist: Vec<&Path>)
 {
 
 }
 
-fn redirect_append(command: &str, arguments: Vec<&Path>, filelist, Vec<&Path>)
-{
-
-}
-
-fn redirect_input(command: &str, arguments: Vec<&Path>, filelist, Vec<&Path>)
-{
-
-}
-
-fn execute_command(command: &str, arguments: Vec<&Path>)
+fn execute_command(command: &str, arguments: Vec<&str>) -> Option<String>
 {
     match COMMANDS.get(command) {
-        None => {
-            println!("Command {} not understood", command);
-        }
         Some(comm) => {
-            comm(arguments);
+            comm(arguments.iter().map(Path::new).collect::<Vec<&Path>>());
+            // Custom commands will always return emptystring
+            return Some(String::from(""));
         }
+        None => ()
+    }
+
+    // Make a mutable copy of command so we can modify it if its an alias
+    let mut command = command;
+
+    if let Some(comm) = ALIASES.get(command) {
+        command = comm;
+    }
+    
+    match Command::new(command).args(arguments).output() 
+    {
+        Ok(command_output) => {
+            let output_data = command_output.stdout;
+            return Some(String::from_utf8(output_data).unwrap())
+        }
+        Err(_) => return None
     }
 }
