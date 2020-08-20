@@ -6,10 +6,9 @@ use std::borrow::Cow::{self, Borrowed, Owned};
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::io::Write;
-use std::fs::File;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions, read_to_string};
 
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::config::OutputStreamType;
@@ -53,7 +52,6 @@ lazy_static! {
         let mut alias_hm = HashMap::new();
         alias_hm.insert("list", "ls");
         alias_hm.insert("show", "cat");
-        alias_hm.insert("exit", "exit");
         alias_hm.insert("remove", "rm");
         alias_hm.insert("removef", "rm -r");
         alias_hm.insert("create", "touch"); 
@@ -246,8 +244,8 @@ fn read_ast_and_execute(ast_root: &ParseNode) {
         {
             let pipe_expr_children = expr_children[1].children.as_ref().unwrap();
             let pipe_command_expr_children = pipe_expr_children[1].children.as_ref().unwrap();
-            let (pipe_command, pipe_arguments) = 
-                read_command_expr(pipe_command_expr_children);
+            let (pipe_command, pipe_arguments) = read_command_expr(pipe_command_expr_children);
+            redirect_pipe(command, arguments, pipe_command, pipe_arguments);
         }
         else
         {
@@ -277,12 +275,6 @@ fn read_command_expr(command_expr_children: &Vec<ParseNode>) -> (&str, Vec<&str>
         } 
     }
     return (command, arguments)
-}
-
-fn read_pipe_expr(pipe_expr_children: &Vec<ParseNode>) -> (&str, Vec<&str>)
-{
-    
-    return ("", Vec::new())
 }
 
 fn read_redirection_expr(redirection_expr_children: &Vec<ParseNode>) -> (&str, Vec<&Path>)
@@ -333,10 +325,74 @@ fn redirect_output(command: &str, arguments: Vec<&str>, filelist: Vec<&Path>, ov
 
 fn redirect_input(command: &str, arguments: Vec<&str>, filelist: Vec<&Path>)
 {
+    //TODO: Right now we do input redirection like bash (only first file is used as input)
+    //      This can be changed if we want to be opinionated:
+    //          Concat all data in files and use resulting blob as input
+    //          Run command separately for each file and output each result
+    match execute_command_with_input(command, arguments, filelist)
+    {
+        Some(output) => {
+            print!("{}", output)
+        }
+        None => println!("Command {} not understood", command),
 
+    }
+}
+
+fn redirect_pipe(command: &str, arguments: Vec<&str>, pipe_command: &str, pipe_arguments: Vec<&str>)
+{
+    let command_process = 
+        match Command::new(command).args(arguments).stdout(Stdio::piped()).spawn()
+        {
+            Ok(child) => {
+                child
+            }
+            Err(err) => {
+                println!("Could not execute command {}", command);
+                return
+            }
+        };
+        
+    match Command::new(pipe_command).args(pipe_arguments).stdin(command_process.stdout.unwrap()).output()
+    {
+        Ok(pipe_command_output) => {
+            let output_data = pipe_command_output.stdout;
+            print!("{}", String::from_utf8(output_data).unwrap());
+        }
+        Err(err) => {
+            println!("Could not execute command {}", pipe_command);
+        }
+    }
 }
 
 fn execute_command(command: &str, arguments: Vec<&str>) -> Option<String>
+{
+    match COMMANDS.get(command) {
+        Some(comm) => {
+            comm(arguments.iter().map(Path::new).collect::<Vec<&Path>>());
+            // Custom commands will always return emptystring
+            return Some(String::from(""));
+        }
+        None => ()
+    }
+    // Make a mutable copy of command so we can modify it if its an alias
+    let mut command = command;
+
+    if let Some(comm) = ALIASES.get(command) {
+        command = comm;
+    }
+    
+    match Command::new(command).args(arguments).output() 
+    {
+        Ok(command_output) => {
+            let output_data = command_output.stdout;
+            return Some(String::from_utf8(output_data).unwrap())
+        }
+        Err(_) => return None,
+    }
+}
+
+fn execute_command_with_input(command: &str, arguments: Vec<&str>, input_filelist: Vec<&Path>) -> Option<String>
 {
     match COMMANDS.get(command) {
         Some(comm) => {
@@ -353,8 +409,22 @@ fn execute_command(command: &str, arguments: Vec<&str>) -> Option<String>
     if let Some(comm) = ALIASES.get(command) {
         command = comm;
     }
+
+    let mut process = Command::new(command)
+                              .args(arguments)
+                              .stdin(Stdio::piped())
+                              .stdout(Stdio::piped())
+                              .spawn()
+                              .expect("Failed to spawn child process to execute command");
     
-    match Command::new(command).args(arguments).output() 
+    let file_contents = read_to_string(input_filelist[0]).expect("Could not read input file");
+
+    {
+        let stdin = process.stdin.as_mut().expect("Failed to get input handle");
+        stdin.write_all(file_contents.as_bytes());
+    }
+
+    match process.wait_with_output()
     {
         Ok(command_output) => {
             let output_data = command_output.stdout;
