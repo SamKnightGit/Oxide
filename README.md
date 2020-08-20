@@ -9,13 +9,9 @@ Terminal and shell rustily written.
 
 ## Current Features being Addressed
 
-- [ ] Multiple command parsing
-- [ ] Commands
-    - [ ] Pipe operator
-    - [ ] Shortcuts for history
-- [ ] Tab Completion
-- [ ] Configuration Files
-
+- [ ] Guided tutorial (in the style of vimtutor)
+- [ ] Better parsing 
+    - [ ] Chained redirection (ls . | cat > result.txt)
 
 ## Future Features
 
@@ -23,4 +19,10 @@ Terminal and shell rustily written.
     - [ ] Command line - GUI interactivity
     - [ ] Fancy command colorization
 
-
+## Features Completed
+- [X] Pipe operator
+- [X] File redirection (>, >>, <)
+- [X] Tab Completion (of filenames)
+- [X] Home-made state changing commands (cd, exit)
+- [X] Calling of arbitrary programs (ls, mkdir, cat, anything else
+  accessible to the environment)
