@@ -63,19 +63,8 @@ fn parse_expr(input_tokens: &Vec<&str>, input_index: &mut usize) -> Result<Parse
     
     parse_command_expr(input_tokens, input_index, &mut parse_tree)?;
     
-    // More to parse
-    if *input_index < input_tokens.len()
-    {
-        if input_tokens[*input_index] == "|"
-        {
-            parse_pipe_expr(input_tokens, input_index, &mut parse_tree)?;
-        }
-        else
-        {
-            parse_redirection_expr(input_tokens, input_index, &mut parse_tree)?;
-        }
-    }
-    
+    parse_pipe_or_redirection_expr(input_tokens, input_index, &mut parse_tree)?;
+     
     return Ok(parse_tree)
 }
 
@@ -95,6 +84,25 @@ fn parse_command_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_no
     return Ok(())
 }
 
+fn parse_pipe_or_redirection_expr(input_tokens: &Vec<&str>, input_index: &mut usize, mut tree_node: &mut ParseNode) -> Result<()>
+{
+    if *input_index == input_tokens.len() 
+    {
+        return Ok(())
+    }
+
+    if input_tokens[*input_index] == "|"
+    {
+        parse_pipe_expr(input_tokens, input_index, &mut tree_node)?;
+    }
+    else
+    {
+        parse_redirection_expr(input_tokens, input_index, &mut tree_node)?;
+    }
+
+    return Ok(())
+}
+
 fn parse_pipe_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &mut ParseNode) -> Result<()>
 {
     if *input_index == input_tokens.len() 
@@ -111,12 +119,13 @@ fn parse_pipe_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node:
         entry: ParseNodeType::Pipe,
         children: None,
     };
+
     pipe_expr_node.children.as_mut().unwrap().push(pipe_node);
     *input_index += 1;
 
     parse_command_expr(input_tokens, input_index, &mut pipe_expr_node)?;
 
-    parse_pipe_expr(input_tokens, input_index, &mut pipe_expr_node)?;
+    parse_pipe_or_redirection_expr(input_tokens, input_index, &mut pipe_expr_node)?;
 
     tree_node.children.as_mut().unwrap().push(pipe_expr_node);
 
