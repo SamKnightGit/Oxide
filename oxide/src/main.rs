@@ -38,14 +38,14 @@ const PROMPT: &str = ">> ";
 const DEBUG: bool = false;
 
 lazy_static! {
-    static ref COMMANDS: HashMap<&'static str, fn(Vec<&Path>) -> ()> = {
-        let mut command_hm = HashMap::new();
-        command_hm.insert("exit", exit as fn(Vec<&Path>) -> ());
-        command_hm.insert("cd", change_folder);
-        command_hm.insert("cf", change_folder);
-        command_hm.insert("clear", clear);
+    static ref BUILTINS: HashMap<&'static str, fn(Vec<&Path>) -> ()> = {
+        let mut builtin_hm = HashMap::new();
+        builtin_hm.insert("exit", exit as fn(Vec<&Path>) -> ());
+        builtin_hm.insert("cd", change_folder);
+        builtin_hm.insert("cf", change_folder);
+        builtin_hm.insert("clear", clear);
 
-        command_hm
+        builtin_hm
     };
 
     static ref ALIASES: HashMap<&'static str, &'static str> = {
@@ -105,7 +105,7 @@ impl Highlighter for MyHelper {
     }
 
     fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-        Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
+        Owned("\x1b[38;5;242m".to_owned() + hint + "\x1b[0m")
     }
 
     fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
@@ -367,10 +367,10 @@ fn redirect_pipe(command: &str, arguments: Vec<&str>, pipe_command: &str, pipe_a
 
 fn execute_command(command: &str, arguments: Vec<&str>) -> Option<String>
 {
-    match COMMANDS.get(command) {
+    match BUILTINS.get(command) {
         Some(comm) => {
             comm(arguments.iter().map(Path::new).collect::<Vec<&Path>>());
-            // Custom commands will always return emptystring
+            // Custom BUILTINS will always return emptystring
             return Some(String::from(""));
         }
         None => ()
@@ -394,10 +394,10 @@ fn execute_command(command: &str, arguments: Vec<&str>) -> Option<String>
 
 fn execute_command_with_input(command: &str, arguments: Vec<&str>, input_filelist: Vec<&Path>) -> Option<String>
 {
-    match COMMANDS.get(command) {
+    match BUILTINS.get(command) {
         Some(comm) => {
             comm(arguments.iter().map(Path::new).collect::<Vec<&Path>>());
-            // Custom commands will always return emptystring
+            // Custom BUILTINS will always return emptystring
             return Some(String::from(""));
         }
         None => ()
