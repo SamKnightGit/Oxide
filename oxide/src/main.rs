@@ -228,7 +228,10 @@ fn execute_input(input: &mut String) {
         }
     }
     read_ast_and_execute(&ast_root);
-    println!("Parse Tree: {:#?}", ast_root);
+    if DEBUG
+    {
+        println!("Parse Tree: {:#?}", ast_root);
+    }
 }
 
 fn read_ast_and_execute(ast_root: &ParseNode) {
