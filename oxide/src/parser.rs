@@ -15,17 +15,18 @@ impl fmt::Display for ParseError {
 }
 
 lazy_static! {
-    static ref COMMANDS: HashSet<&'static str> =
-        [
-            "ls", "list", "cat", "show", "exit", "cd", "cf", "clear", 
-            "mkdir", "createf", "rm", "remove", "rmf", "removef", "create", "touch"
-        ].iter().cloned().collect();
-
-    
     static ref REDIRECTION_OPS: HashSet<&'static str> = 
         [
             ">", ">>", "<", "|"
         ].iter().cloned().collect();
+}
+
+
+#[derive(Debug, PartialEq)]
+pub enum RedirectionOp {
+    Output,
+    Append,
+    Input,
 }
 
 #[derive(Debug, PartialEq)]
@@ -36,7 +37,7 @@ pub enum ParseNodeType {
     RedirectionExpr,
     Command(String),
     File(String),
-    RedirectionOp(String),
+    RedirectionOp(RedirectionOp),
     Pipe,
 }
 
@@ -163,11 +164,6 @@ fn parse_command(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &
     }
 
     let command = input_tokens[*input_index];
-    if !COMMANDS.contains(command) {
-        return Err(ParseError { 
-            message: format!("could not understand command '{0}'", command) 
-        })
-    }
 
     // Add Expr to AST node 
     let command_node = ParseNode {
@@ -188,7 +184,8 @@ fn parse_filelist(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: 
     }
     
     let token = input_tokens[*input_index];
-    if is_filename(token)
+    // Keep adding files until we hit a redirection operator
+    if !REDIRECTION_OPS.contains(token)
     {
         // Add token as file to syntax tree
         let file_node = ParseNode {
@@ -212,8 +209,15 @@ fn parse_redirection_op(input_tokens: &Vec<&str>, input_index: &mut usize, tree_
         })
     }
     // Add token as redirection op to syntax tree
+    let redirection_op_token = match token {
+        ">" => RedirectionOp::Output,
+        ">>" => RedirectionOp::Append,
+        "<" => RedirectionOp::Input,
+        _ => return Err(ParseError { message: format!("invalid redirection operator.") }),
+    };
+
     let redirection_op_node = ParseNode {
-        entry: ParseNodeType::RedirectionOp(token.to_string()),
+        entry: ParseNodeType::RedirectionOp(redirection_op_token),
         children: None,
     };
 
@@ -221,15 +225,3 @@ fn parse_redirection_op(input_tokens: &Vec<&str>, input_index: &mut usize, tree_
     *input_index += 1;
     return Ok(())
 }
-
-fn is_filename(word: &str) -> bool
-{
-    // Everything that is not a command or a redirection operator is a filename
-    if COMMANDS.contains(word) || REDIRECTION_OPS.contains(word)
-    {
-        return false
-    }
-    return true
-}
-
-

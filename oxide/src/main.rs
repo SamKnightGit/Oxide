@@ -6,7 +6,8 @@ use std::borrow::Cow::{self, Borrowed, Owned};
 use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Stdio, Child};
+use std::io;
 use std::io::Write;
 use std::fs::{File, OpenOptions, read_to_string};
 
@@ -22,6 +23,7 @@ use rustyline::Helper;
 mod parser;
 use parser::ParseNodeType;
 use parser::ParseNode;
+use parser::RedirectionOp;
 use parser::parse_input;
 
 mod commands;
@@ -61,7 +63,6 @@ lazy_static! {
     };
         
 }
-
 
 struct MyHelper {
     completer: FilenameCompleter,
@@ -170,9 +171,16 @@ fn main() {
         //let mut input = String::new();
         match readline {
             Ok(mut input) => {
-                if DEBUG {
+                if DEBUG 
+                {
                     println!("Read the following: {}", input);
                 }
+                if input.is_empty()
+                {
+                    print!("");
+                    continue
+                }
+
                 rl.add_history_entry(input.as_str().trim());
                 execute_input(&mut input);
                 match rl.save_history(&oxide_history_path) {
@@ -220,42 +228,89 @@ fn execute_input(input: &mut String) {
         }
     }
     read_ast_and_execute(&ast_root);
-    println!("Parse Tree: {:?}", ast_root);
+    println!("Parse Tree: {:#?}", ast_root);
 }
 
 fn read_ast_and_execute(ast_root: &ParseNode) {
-    let expr_children = ast_root.children.as_ref().unwrap();
+    let mut expr_children = ast_root.children.as_ref().unwrap();
     
-    let command_expr_children = expr_children[0].children.as_ref().unwrap();
-    let (command, arguments) = read_command_expr(command_expr_children);
-    
-    if expr_children.len() == 1
+    let mut commands_and_arguments = Vec::new();
+    let mut child_index = 0;
+    while child_index < expr_children.len()
     {
-        // Single command expression, print out result
-        match execute_command(command, arguments) {
-            Some(output) => print!("{}", output),
-            None => println!("Command {} not understood", command),
+        match expr_children[child_index].entry {
+            ParseNodeType::CommandExpr => {
+                let command_expr_children = expr_children[child_index].children.as_ref().unwrap();
+                let command_expr = read_command_expr(command_expr_children);
+                commands_and_arguments.push(command_expr);
+                child_index += 1;
+            }
+            ParseNodeType::PipeExpr => {
+                let pipe_expr_children = expr_children[child_index].children.as_ref().unwrap();
+                
+                // Set new children to recurse down the PipeExpr
+                expr_children = pipe_expr_children;
+                // Set child index to 1 to avoid Pipe node.
+                child_index = 1;
+                continue
+            }
+            _ => break,
+        }
+    }
+    if commands_and_arguments.len() == 1
+    {
+        // A single command expr
+        let (command, arguments) = &commands_and_arguments[0];
+        
+        // Still need to handle file redirection
+        if child_index < expr_children.len()
+        {
+            let redirection_expr_children = expr_children[child_index].children.as_ref().unwrap();
+            let (redirection_op, filelist) = read_redirection_expr(redirection_expr_children);
+            match redirection_op {
+                RedirectionOp::Output => redirect_output(command, arguments, &filelist, true),
+                RedirectionOp::Append => redirect_output(command, arguments, &filelist, false),
+                RedirectionOp::Input => redirect_input(command, arguments, &filelist),
+            }
+
+        }
+        else
+        {
+            match execute_command(command, arguments) {
+                Some(output) => print!("{}", output),
+                None => println!("Command {} not understood", command),
+            }
         }
     }
     else
     {
-        // Command expression, redirect expression || Command expression, pipe expression
-        if expr_children[1].entry == ParseNodeType::PipeExpr
+                
+        let final_process: Option<Child> = execute_on_command_list(commands_and_arguments);
+
+        // Still need to handle file redirection
+        if child_index < expr_children.len() 
         {
-            let pipe_expr_children = expr_children[1].children.as_ref().unwrap();
-            let pipe_command_expr_children = pipe_expr_children[1].children.as_ref().unwrap();
-            let (pipe_command, pipe_arguments) = read_command_expr(pipe_command_expr_children);
-            redirect_pipe(command, arguments, pipe_command, pipe_arguments);
+            let redirection_expr_children = expr_children[child_index].children.as_ref().unwrap();
+            let (redirection_op, filelist) = read_redirection_expr(redirection_expr_children);
+            match redirection_op {
+                RedirectionOp::Output => redirect_output_process(final_process, &filelist, true),
+                RedirectionOp::Append => redirect_output_process(final_process, &filelist, false),
+                RedirectionOp::Input => redirect_input_process(final_process, &filelist),
+            }
         }
         else
         {
-            let redirection_expr_children = expr_children[1].children.as_ref().unwrap();
-            let (redirection_op, filelist) = read_redirection_expr(redirection_expr_children);
-            match redirection_op {
-                ">" => redirect_output(command, arguments, filelist, true),
-                ">>" => redirect_output(command, arguments, filelist, false),
-                "<" => redirect_input(command, arguments, filelist),
-                _ => println!("Unexpected redirection operation: {}", redirection_op), 
+            // Just print the results of the pipe expression
+            if let Some(process) = final_process 
+            {
+                match process.wait_with_output()
+                {
+                    Ok(command_output) => {
+                        let output_data = command_output.stdout;
+                        println!("{}", String::from_utf8(output_data).unwrap())
+                    }
+                    Err(_) => println!("Could not get output from final command!"),
+                }
             }
         }
     }
@@ -277,9 +332,10 @@ fn read_command_expr(command_expr_children: &Vec<ParseNode>) -> (&str, Vec<&str>
     return (command, arguments)
 }
 
-fn read_redirection_expr(redirection_expr_children: &Vec<ParseNode>) -> (&str, Vec<&Path>)
+fn read_redirection_expr(redirection_expr_children: &Vec<ParseNode>) -> (&RedirectionOp, Vec<&Path>)
 {
-    let mut redirection_op: &str = "";
+    // Placeholder redirection op
+    let mut redirection_op: &RedirectionOp = &RedirectionOp::Output;
     let mut filelist: Vec<&Path> = Vec::new();
     for node in redirection_expr_children.iter()
     {
@@ -293,9 +349,114 @@ fn read_redirection_expr(redirection_expr_children: &Vec<ParseNode>) -> (&str, V
     return (redirection_op, filelist)
 }
 
-fn redirect_output(command: &str, arguments: Vec<&str>, filelist: Vec<&Path>, overwrite: bool)
+fn execute_on_command_list(commands_and_arguments: Vec<(&str, Vec<&str>)>) -> Option<Child>
 {
-    match execute_command(command, arguments) 
+    let mut previous_process: Option<Child> = None;
+    for (command, arguments) in commands_and_arguments
+    {
+        // If BUILTIN start the piping again after the builtin command
+        if let Some(_) = BUILTINS.get(command)
+        {
+            println!("Builtin command: {} encountered during piping, consider removing", command);
+            previous_process = None;
+            continue;
+        }
+
+        match previous_process
+        {
+            Some(prev_process) => {
+                let next_process = 
+                    match Command::new(command)
+                                  .args(arguments)
+                                  .stdout(Stdio::piped())
+                                  .stdin(prev_process.stdout.unwrap())
+                                  .spawn()
+                    {
+                        Ok(process) => process,
+                        Err(err) => {
+                            eprintln!("{}", err);
+                            return None;
+                        }
+                    };
+                
+                previous_process = Some(next_process);
+            }
+            None => {
+                let next_process = 
+                    match Command::new(command)
+                                  .args(arguments)
+                                  .stdout(Stdio::piped())
+                                  .spawn()
+                    {
+                        Ok(process) => process,
+                        Err(err) => {
+                            eprintln!("{}", err);
+                            return None;
+                        }
+                    };
+                
+                previous_process = Some(next_process);
+            }
+        }
+    }
+
+    return previous_process
+}
+
+
+// Output redirection on piped processes
+fn redirect_output_process(process: Option<Child>, filelist: &Vec<&Path>, overwrite: bool)
+{
+    let mut output = String::new();
+    if let Some(real_process) = process
+    {
+        match real_process.wait_with_output()
+        {
+            Ok(command_output) => {
+                let output_data = command_output.stdout;
+                output = 
+                    match String::from_utf8(output_data)
+                    {
+                        Ok(output_string) => output_string,
+                        Err(_) => {
+                            println!("Could not read data from process into string!");
+                            return
+                        }
+                    };
+            }
+            Err(_) => {
+                println!("Could not get output from process during output redirection");
+                return
+            }
+        }
+    }
+
+    for file in filelist.iter()
+    {
+        // TODO: Do we want to warn people before we overwrite with > operator?
+        match OpenOptions::new()
+                          .write(true)
+                          .create(true)
+                          .truncate(overwrite)
+                          .append(!overwrite)
+                          .open(file)
+        {
+            Ok(mut fp) => {
+                match fp.write_all(output.as_bytes()) 
+                {
+                    Err(err) => eprintln!("{}", err),
+                    _ => (),
+                }
+            }
+            Err(err) => eprintln!("{}", err),
+        }
+    }
+}
+
+// Output redirection on individual command
+fn redirect_output(command: &str, arguments: &Vec<&str>, filelist: &Vec<&Path>, overwrite: bool)
+{
+    match execute_command(command, &arguments) 
     {
         Some(output) => {
             for file in filelist.iter()
@@ -323,49 +484,67 @@ fn redirect_output(command: &str, arguments: Vec<&str>, filelist: Vec<&Path>, ov
     }
 }
 
-fn redirect_input(command: &str, arguments: Vec<&str>, filelist: Vec<&Path>)
+// Input redirection on piped processes
+fn redirect_input_process(process: Option<Child>, filelist: &Vec<&Path>)
+{
+    if let None = process
+    {
+        return
+    }
+    // This is safe due to above check
+    let mut process = process.unwrap();
+
+    let file_contents = read_to_string(filelist[0]).expect("Could not read input file");
+
+    {
+        let stdin = process.stdin.as_mut().expect("Failed to get input handle");
+        stdin.write_all(file_contents.as_bytes());
+    }
+
+
+    match process.wait_with_output()
+    {
+        Ok(command_output) => {
+            let output_data = command_output.stdout;
+            println!("{}", String::from_utf8(output_data).unwrap());
+        }
+        Err(err) => eprintln!("{}", err)
+    }
+
+}
+
+// Input redirection on individual command
+fn redirect_input(command: &str, arguments: &Vec<&str>, filelist: &Vec<&Path>)
 {
     //TODO: Right now we do input redirection like bash (only first file is used as input)
     //      This can be changed if we want to be opinionated:
     //          Concat all data in files and use resulting blob as input
     //          Run command separately for each file and output each result
-    match execute_command_with_input(command, arguments, filelist)
-    {
-        Some(output) => {
-            print!("{}", output)
+    match BUILTINS.get(command) {
+        Some(comm) => {
+            comm(arguments.iter().map(Path::new).collect::<Vec<&Path>>()); 
         }
-        None => println!("Command {} not understood", command),
+        None => {
+            // Make a mutable copy of command so we can modify it if its an alias
+            let mut command = command;
 
-    }
-}
+            if let Some(comm) = ALIASES.get(command) {
+                command = comm;
+            }
 
-fn redirect_pipe(command: &str, arguments: Vec<&str>, pipe_command: &str, pipe_arguments: Vec<&str>)
-{
-    let command_process = 
-        match Command::new(command).args(arguments).stdout(Stdio::piped()).spawn()
-        {
-            Ok(child) => {
-                child
-            }
-            Err(err) => {
-                println!("Could not execute command {}", command);
-                return
-            }
-        };
-        
-    match Command::new(pipe_command).args(pipe_arguments).stdin(command_process.stdout.unwrap()).output()
-    {
-        Ok(pipe_command_output) => {
-            let output_data = pipe_command_output.stdout;
-            print!("{}", String::from_utf8(output_data).unwrap());
-        }
-        Err(err) => {
-            println!("Could not execute command {}", pipe_command);
+            let mut process = Command::new(command)
+                                      .args(arguments)
+                                      .stdin(Stdio::piped())
+                                      .stdout(Stdio::piped())
+                                      .spawn()
+                                      .expect("Failed to spawn child process to execute command");
+
+            redirect_input_process(Some(process), filelist);
         }
     }
 }
 
-fn execute_command(command: &str, arguments: Vec<&str>) -> Option<String>
+fn execute_command(command: &str, arguments: &Vec<&str>) -> Option<String>
 {
     match BUILTINS.get(command) {
         Some(comm) => {
@@ -389,47 +568,5 @@ fn execute_command(command: &str, arguments: Vec<&str>) -> Option<String>
             return Some(String::from_utf8(output_data).unwrap())
         }
         Err(_) => return None,
-    }
-}
-
-fn execute_command_with_input(command: &str, arguments: Vec<&str>, input_filelist: Vec<&Path>) -> Option<String>
-{
-    match BUILTINS.get(command) {
-        Some(comm) => {
-            comm(arguments.iter().map(Path::new).collect::<Vec<&Path>>());
-            // Custom BUILTINS will always return emptystring
-            return Some(String::from(""));
-        }
-        None => ()
-    }
-
-    // Make a mutable copy of command so we can modify it if its an alias
-    let mut command = command;
-
-    if let Some(comm) = ALIASES.get(command) {
-        command = comm;
-    }
-
-    let mut process = Command::new(command)
-                              .args(arguments)
-                              .stdin(Stdio::piped())
-                              .stdout(Stdio::piped())
-                              .spawn()
-                              .expect("Failed to spawn child process to execute command");
-    
-    let file_contents = read_to_string(input_filelist[0]).expect("Could not read input file");
-
-    {
-        let stdin = process.stdin.as_mut().expect("Failed to get input handle");
-        stdin.write_all(file_contents.as_bytes());
-    }
-
-    match process.wait_with_output()
-    {
-        Ok(command_output) => {
-            let output_data = command_output.stdout;
-            return Some(String::from_utf8(output_data).unwrap())
-        }
-        Err(_) => return None
     }
 }
