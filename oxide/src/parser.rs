@@ -5,12 +5,13 @@ type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
-    message: String
+    message: String,
+    token_index: usize,
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Parse Error: {}", self.message)
+        write!(f, "Parse Error at token {0}: {1}", self.token_index, self.message)
     }
 }
 
@@ -22,7 +23,7 @@ lazy_static! {
 }
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum RedirectionOp {
     Output,
     Append,
@@ -33,6 +34,7 @@ pub enum RedirectionOp {
 pub enum ParseNodeType {
     Expr,
     CommandExpr,
+    RedirectionPipeExpr,
     PipeExpr,
     RedirectionExpr,
     Command(String),
@@ -64,7 +66,7 @@ fn parse_expr(input_tokens: &Vec<&str>, input_index: &mut usize) -> Result<Parse
     
     parse_command_expr(input_tokens, input_index, &mut parse_tree)?;
     
-    parse_pipe_or_redirection_expr(input_tokens, input_index, &mut parse_tree)?;
+    parse_redirection_pipe_expr(input_tokens, input_index, &mut parse_tree)?;
      
     return Ok(parse_tree)
 }
@@ -85,22 +87,20 @@ fn parse_command_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_no
     return Ok(())
 }
 
-fn parse_pipe_or_redirection_expr(input_tokens: &Vec<&str>, input_index: &mut usize, mut tree_node: &mut ParseNode) -> Result<()>
+fn parse_redirection_pipe_expr(input_tokens: &Vec<&str>, input_index: &mut usize, mut tree_node: &mut ParseNode) -> Result<()>
 {
     if *input_index == input_tokens.len() 
     {
         return Ok(())
     }
-
-    if input_tokens[*input_index] == "|"
-    {
-        parse_pipe_expr(input_tokens, input_index, &mut tree_node)?;
-    }
-    else
+    
+    if input_tokens[*input_index] != "|"
     {
         parse_redirection_expr(input_tokens, input_index, &mut tree_node)?;
     }
 
+    parse_pipe_expr(input_tokens, input_index, &mut tree_node)?;
+    
     return Ok(())
 }
 
@@ -110,7 +110,16 @@ fn parse_pipe_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node:
     {
         return Ok(())
     }
-    
+
+    let token = input_tokens[*input_index];
+    if token != "|"
+    {
+        return Err(ParseError {
+            message: format!("Expected '|' to continue piping. Got '{0}' instead.", token),
+            token_index: *input_index,
+        })
+    }
+
     let mut pipe_expr_node = ParseNode {
         entry: ParseNodeType::PipeExpr,
         children: Some(Vec::new()),
@@ -126,7 +135,7 @@ fn parse_pipe_expr(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node:
 
     parse_command_expr(input_tokens, input_index, &mut pipe_expr_node)?;
 
-    parse_pipe_or_redirection_expr(input_tokens, input_index, &mut pipe_expr_node)?;
+    parse_redirection_pipe_expr(input_tokens, input_index, &mut pipe_expr_node)?;
 
     tree_node.children.as_mut().unwrap().push(pipe_expr_node);
 
@@ -159,7 +168,11 @@ fn parse_command(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &
     if *input_index == input_tokens.len() 
     {
         return Err(ParseError {
-            message: format!("reached end of input at token '{0}' but expected command.", input_tokens[*input_index - 1])
+            message: format!(
+                         "reached end of input at token '{0}' but expected command.", 
+                         input_tokens[*input_index - 1]
+                     ),
+            token_index: *input_index,
         })
     }
 
@@ -202,18 +215,15 @@ fn parse_filelist(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: 
 fn parse_redirection_op(input_tokens: &Vec<&str>, input_index: &mut usize, tree_node: &mut ParseNode) -> Result<()>
 {
     let token = input_tokens[*input_index];
-    if !REDIRECTION_OPS.contains(token)
-    {
-        return Err(ParseError {
-            message: format!("expected redirection operator, got '{0}'", token)
-        })
-    }
-    // Add token as redirection op to syntax tree
+    
     let redirection_op_token = match token {
-        ">" => RedirectionOp::Output,
+        ">"  => RedirectionOp::Output,
         ">>" => RedirectionOp::Append,
-        "<" => RedirectionOp::Input,
-        _ => return Err(ParseError { message: format!("invalid redirection operator.") }),
+        "<"  => RedirectionOp::Input,
+        _    => return Err(ParseError { 
+                    message: format!("expected redirection operator, got '{0}'", token),
+                    token_index: *input_index,
+                })
     };
 
     let redirection_op_node = ParseNode {
