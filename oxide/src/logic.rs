@@ -166,6 +166,12 @@ fn execute_input(input: &mut String) {
 fn read_ast_and_execute(ast_root: &ParseNode) {
     let mut expr_children = ast_root.children.as_ref().unwrap();
     
+    let commands_and_arguments = accumulate_commands_and_arguments(&mut expr_children);
+
+    execute_on_command_list(commands_and_arguments);
+}
+
+fn accumulate_commands_and_arguments(mut expr_children: &Vec<ParseNode>) -> Vec<CommandData> {
     let mut commands_and_arguments: Vec<CommandData> = Vec::new();
     let mut child_index = 0;
     let mut command_data = CommandData::new();
@@ -215,7 +221,7 @@ fn read_ast_and_execute(ast_root: &ParseNode) {
         commands_and_arguments.push(command_data);
     }
 
-    execute_on_command_list(commands_and_arguments);
+    return commands_and_arguments
 }
 
 fn read_command_expr(
@@ -584,8 +590,115 @@ fn execute_command(command: &str, arguments: &Vec<String>) -> Option<String>
     }
     else
     {
-        eprintln!("Could not get output from command: {}", command);
+ eprintln!("Could not get output from command: {}", command);
         return None;
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_split_input()
+    {
+        let mut input = String::from("ls .. . wow");
+        let expected_split = vec!("ls", "..", ".", "wow");
+        assert_eq!(split_input(&mut input), expected_split);
+    }
+
+    #[test]
+    fn test_accumulate_commands_and_arguments()
+    {
+        let mut input = String::from("ls . | sort > test.txt");
+        let commands = split_input(&mut input);
+        let ast_root = parse_input(&commands).unwrap();
+        let mut expr_children = ast_root.children.as_ref().unwrap();
+        
+        let commands_and_arguments = accumulate_commands_and_arguments(&mut expr_children);
+        let first_command = &commands_and_arguments[0];
+        let second_command = &commands_and_arguments[1];
+        
+        assert_eq!(first_command.command, "ls");
+        assert_eq!(first_command.arguments, vec!(String::from(".")));
+        assert_eq!(first_command.redirection_op, None);
+        assert_eq!(first_command.redirection_files, Vec::<&Path>::new());
+
+        assert_eq!(second_command.command, "sort");
+        assert_eq!(second_command.arguments, Vec::<String>::new());
+        assert_eq!(second_command.redirection_op, Some(RedirectionOp::Output));
+        assert_eq!(second_command.redirection_files, vec!(Path::new("test.txt")));
+    }
+    
+    #[test]
+    fn test_read_command_expr()
+    {
+        let mut command_data = CommandData::new();
+        let mut command_expr_children = vec!(
+            ParseNode {
+                entry: ParseNodeType::Command(String::from("ls")),
+                children: None,
+            },
+            ParseNode {
+                entry: ParseNodeType::File(String::from(".")),
+                children: None,
+            },
+            ParseNode {
+                entry: ParseNodeType::File(String::from("..")),
+                children: None,
+            },
+            ParseNode {
+                entry: ParseNodeType::RedirectionOp(RedirectionOp::Output),
+                children: None,
+            }
+        );
+
+        read_command_expr(
+            &mut command_data.command, 
+            &mut command_data.arguments, 
+            &command_expr_children
+        );
+
+        assert_eq!(command_data.command, String::from("ls"));
+        assert_eq!(command_data.arguments, vec!(String::from("."), String::from("..")));
+        assert_eq!(command_data.redirection_op, None); 
+        assert_eq!(command_data.redirection_files, Vec::<&Path>::new());
+    }
+
+    #[test]
+    fn test_read_redirection_expr()
+    {
+        let mut command_data = CommandData::new();
+        let mut command_expr_children = vec!(
+            ParseNode {
+                entry: ParseNodeType::RedirectionOp(RedirectionOp::Input),
+                children: None,
+            },
+            ParseNode {
+                entry: ParseNodeType::File(String::from("test1.txt")),
+                children: None,
+            },
+            ParseNode {
+                entry: ParseNodeType::File(String::from("test2.txt")),
+                children: None,
+            },
+            ParseNode {
+                entry: ParseNodeType::Command(String::from("ls")),
+                children: None,
+            }
+        );
+
+        read_redirection_expr(
+            &mut command_data.redirection_op, 
+            &mut command_data.redirection_files, 
+            &command_expr_children
+        );
+
+        assert_eq!(command_data.command, String::from(""));
+        assert_eq!(command_data.arguments, Vec::<String>::new());
+        assert_eq!(command_data.redirection_op, Some(RedirectionOp::Input)); 
+        assert_eq!(command_data.redirection_files, vec!(Path::new("test1.txt"), Path::new("test2.txt")));
+
+    }
+}
